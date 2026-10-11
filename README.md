@@ -38,6 +38,7 @@ python cli.py data/orders_big.csv --no-plot
 | `--encoding <编码>` | 读 CSV 用的编码，默认 `utf-8` |
 | `--by <列名>` | 指定分组列，覆盖自动猜测 |
 | `--value <列名>` | 指定统计与直方图用的数值列，覆盖自动猜测 |
+| `--report <文件>` | 把统计同时写进这个文件（UTF-8，会覆盖已有文件） |
 
 `--by` / `--value` 点名的列不存在时，会直接报错并列出可用列名，不会用错的列继续算:
 
@@ -56,6 +57,12 @@ python cli.py 我的表.csv --encoding gbk
 
 ```powershell
 python cli.py data/orders_big.csv --by 门店 --value 单价 --out out/
+```
+
+想把统计留档，又不丢掉终端的实时输出:
+
+```powershell
+python cli.py data/orders_big.csv --out out/ --report report.txt
 ```
 
 ## 示例输入
@@ -105,7 +112,8 @@ A002,西区,1,12.0,2025-03-01
 
 ## 已知限制
 
-- 统计只打到终端，没有写进文件；要留档得自己重定向（`> report.txt`）。
+- 统计默认只打到终端；`--report <文件>` 可以把同样的内容同时写进一个 UTF-8 文本文件
+  （覆盖写入，不留历史；`[plot]` 这类日志行也会一起写进去）。
 - "哪一列是数值列"用的是比例启发式（能被 `to_numeric` 转换的值 >= 60%），
   所以一列里混了太多文字时，它会被当成分类列而不是数值列。
   拿不准时用 `--value` 直接点名。

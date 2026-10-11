@@ -4,10 +4,12 @@
     python cli.py input.csv --out out/
     python cli.py input.csv --no-plot
     python cli.py input.csv --encoding gbk --by 门店 --value 数量
+    python cli.py input.csv --report report.txt
 
 做三件事: 清洗（只去掉完全空白的行）-> 统计（行数/缺失/dtype/均值中位数/分组计数）-> 出图。
 """
 import argparse
+import contextlib
 import sys
 from pathlib import Path
 
@@ -42,7 +44,42 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--value", default=None, help="指定统计与直方图用的数值列（默认按启发式自动猜）"
     )
+    parser.add_argument(
+        "--report", type=Path, default=None,
+        help="把统计同时写进这个文件（UTF-8，会覆盖已有文件）",
+    )
     return parser.parse_args()
+
+
+class Tee:
+    """把写进来的东西同时送到多个流（终端 + 报告文件）。"""
+
+    def __init__(self, *streams) -> None:
+        self.streams = streams
+
+    def write(self, text: str) -> None:
+        for s in self.streams:
+            s.write(text)
+
+    def flush(self) -> None:
+        for s in self.streams:
+            s.flush()
+
+
+@contextlib.contextmanager
+def report_stream(path: Path | None):
+    """--report 给出时产出一个「终端 + 文件」的流，没给就产出 None。"""
+    if path is None:
+        yield None
+        return
+    try:
+        handle = path.open("w", encoding="utf-8")
+    except OSError as exc:
+        raise UserError(f"写不了报告文件 {path}: {exc.strerror or exc}") from None
+    try:
+        yield Tee(sys.stdout, handle)
+    finally:
+        handle.close()
 
 
 def load(path: Path, encoding: str = "utf-8") -> pd.DataFrame:
@@ -211,10 +248,12 @@ def main() -> int:
         # 先把列名校验做掉，再打印统计：不然报错前会先刷一屏没用的输出
         value = check_value_column(df, args.value) if args.value else None
         by = check_column(df, args.by, "分组") if args.by else None
-        report(df, value)
-        group_counts(df, by)
-        if not args.no_plot:
-            plot(df, args.out, by, value)
+        with report_stream(args.report) as stream:
+            with contextlib.redirect_stdout(stream or sys.stdout):
+                report(df, value)
+                group_counts(df, by)
+                if not args.no_plot:
+                    plot(df, args.out, by, value)
     except UserError as exc:
         print(f"[error] {exc}", file=sys.stderr)
         return 1
