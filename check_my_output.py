@@ -1,11 +1,13 @@
 """check_my_output.py -- 成绩单。
 
-用法:
+用法（Windows PowerShell，注意先设好 UTF-8）:
+    $env:PYTHONIOENCODING = "utf-8"
     python explore.py > my_output.txt
     python check_my_output.py my_output.txt data/orders.csv
 
 它不重新实现 pandas 逻辑，只做一件事：把你输出里的数字和独立算出的
 期望值逐项对照，然后打印 PASS/FAIL 和分数。
+如果它在列名上大面积 FAIL，先检查编码：my_output.txt 必须以 utf-8 保存。
 """
 import argparse
 import re
@@ -19,7 +21,7 @@ def expected(csv: Path) -> dict:
     df = pd.read_csv(csv)
     return {
         "rows": len(df),
-        "cols": df.shape[1],
+        "shape": list(df.shape),
         "missing": {c: int(n) for c, n in df.isna().sum().items()},
         "dtypes": {c: str(t) for c, t in df.dtypes.items()},
     }
@@ -31,30 +33,36 @@ def main() -> int:
     parser.add_argument("csv", type=Path, help="对应的输入 CSV")
     args = parser.parse_args()
 
-    text = args.output.read_text(encoding="utf-8", errors="replace")
+    raw = args.output.read_bytes()
+    text = raw.decode("utf-8", errors="replace")
+    if "\ufffd" in text:
+        print("!! 警告: 输出文件不是有效的 UTF-8（出现替换字符）。")
+        print("   先执行 $env:PYTHONIOENCODING = \"utf-8\" 再重跑 explore.py。")
+        print()
+
     exp = expected(args.csv)
     checks = []
 
-    def check(name, ok, detail=""):
-        checks.append((name, bool(ok), detail))
+    def check(name, ok):
+        checks.append((name, bool(ok)))
 
-    check("打印了行数 10", re.search(r"\b10\b", text) is not None)
-    check("打印了列数 5", re.search(r"\b5\b", text) is not None)
-    check("出现 float64", "float64" in text)
-    check("出现 3（缺失值个数）", re.search(r"\b3\b", text) is not None)
+    check(f"行数 = {exp['rows']}", re.search(rf"\b{exp['rows']}\b", text) is not None)
+    check(f"列数 = {exp['shape'][1]}", re.search(rf"\b{exp['shape'][1]}\b", text) is not None)
+    for col, dt in exp["dtypes"].items():
+        check(f"列名出现在输出里: {col}", col in text)
+    check("打印了 float64", "float64" in text)
     for col, n in exp["missing"].items():
-        if n:
-            check(f"缺失列 {col} = {n}", col in text)
-    for col in exp["dtypes"]:
-        check(f"输出里出现列名 {col}", col in text)
-    check("出现 str（说明打印了 dtype）", "str" in text)
+        check(f"缺失计数可用: {col} = {n}", col in text and re.search(rf"\b{n}\b", text) is not None)
+    for col, dt in exp["dtypes"].items():
+        if dt == "float64":
+            check(f"{col} 的 dtype 应为 float64", re.search(rf"{re.escape(col)}[^\n]*float64", text) is not None)
 
-    passed = sum(1 for _, ok, _ in checks if ok)
+    passed = sum(1 for _, ok in checks if ok)
     total = len(checks)
     print(f"成绩单: {passed}/{total}")
-    for name, ok, detail in checks:
-        print(f"  [{'PASS' if ok else 'FAIL'}] {name} {detail}")
-    print("-" * 40)
+    for name, ok in checks:
+        print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
+    print("-" * 44)
     print("期望缺失计数:", exp["missing"])
     print("期望 dtype   :", exp["dtypes"])
     return 0 if passed == total else 1
