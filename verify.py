@@ -1,4 +1,4 @@
-"""verify.py —— 独立复核参考（量尺，不是你的 explore.py）。
+"""verify.py -- 独立复核参考（量尺，不是你的 explore.py）。
 
 用法:
     python verify.py data/orders.csv
@@ -6,6 +6,8 @@
 
 它用一套独立写法把该算的都算一遍。你只需要让 explore.py 的每个数字
 在下面找到同一个值；对不上就是 explore.py 的问题，不要去改这个文件。
+
+判定是启发式的（所以留了 --by 覆盖口子），阈值写在下面的常量里。
 """
 import argparse
 import json
@@ -14,35 +16,30 @@ from pathlib import Path
 
 import pandas as pd
 
+NUMERIC_FRACTION = 0.6   # 能转成数字的比例超过它，就当数值列
+GROUP_MAX_RATIO = 0.5    # 非数值列取值数 < 行数*0.5，才有资格当分组列
+
 
 def to_numeric_series(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_numeric(df[col], errors="coerce")
 
 
 def numeric_fraction(df: pd.DataFrame, col: str) -> float:
-    """这一列里有多少比例的值能被转成数字。"""
     return float(to_numeric_series(df, col).notna().mean())
 
 
 def is_numeric_like(df: pd.DataFrame, col: str) -> bool:
-    """这一列像不像数字列。
-
-    判定是启发式的（也是为什么本脚本支持 --by / --numeric 覆盖）：
-    - pandas 已经把它读成数字类型 -> 是；
-    - 否则，能被转成数字的值占比 >= 60% -> 是（拦住"一个未知毁一列"）。
-    """
     if pd.api.types.is_numeric_dtype(df[col]):
         return True
-    return numeric_fraction(df, col) >= 0.6
+    return numeric_fraction(df, col) >= NUMERIC_FRACTION
 
 
 def pick_group_col(df: pd.DataFrame) -> str | None:
-    """挑一个"取值少"的非数值列当分组列。"""
+    limit = max(2, int(len(df) * GROUP_MAX_RATIO))
     for col in df.columns:
         if is_numeric_like(df, col):
             continue
-        n = df[col].nunique(dropna=False)
-        if 1 < n <= max(2, len(df) // 4):
+        if 1 < df[col].nunique(dropna=False) <= limit:
             return col
     return None
 
@@ -56,12 +53,7 @@ def main() -> int:
 
     df = pd.read_csv(args.csv)
 
-    # 数值列：这一列"像数字"，才算数值列
-    numeric = {}
-    for col in df.columns:
-        if is_numeric_like(df, col):
-            numeric[col] = to_numeric_series(df, col)
-
+    numeric = {c: to_numeric_series(df, c) for c in df.columns if is_numeric_like(df, c)}
     group_col = args.by or pick_group_col(df)
 
     summary = {
