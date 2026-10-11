@@ -20,9 +20,16 @@ def to_numeric_series(df: pd.DataFrame, col: str) -> pd.Series:
 
 
 def is_numeric_like(df: pd.DataFrame, col: str) -> bool:
-    """这一列像不像数字列：转得动，且大部分值有效。"""
-    s = to_numeric_series(df, col)
-    return s.notna().sum() >= len(df) * 0.8
+    """这一列像不像数字列。
+
+    两个信号任一成立即可：
+    1) pandas 已经把它读成数字类型（如 float64）；
+    2) 强制转换后"能转出来的值"比转换前多 —— 说明那串字符里藏着数字。
+    """
+    if pd.api.types.is_numeric_dtype(df[col]):
+        return True
+    coerced = to_numeric_series(df, col)
+    return int(coerced.notna().sum()) > int(df[col].notna().sum())
 
 
 def pick_group_col(df: pd.DataFrame) -> str | None:
@@ -30,7 +37,8 @@ def pick_group_col(df: pd.DataFrame) -> str | None:
     for col in df.columns:
         if is_numeric_like(df, col):
             continue
-        if 1 < df[col].nunique(dropna=False) <= max(2, len(df) // 4):
+        n = df[col].nunique(dropna=False)
+        if 1 < n <= max(2, len(df) // 4):
             return col
     return None
 
