@@ -19,17 +19,21 @@ def to_numeric_series(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_numeric(df[col], errors="coerce")
 
 
+def numeric_fraction(df: pd.DataFrame, col: str) -> float:
+    """这一列里有多少比例的值能被转成数字。"""
+    return float(to_numeric_series(df, col).notna().mean())
+
+
 def is_numeric_like(df: pd.DataFrame, col: str) -> bool:
     """这一列像不像数字列。
 
-    两个信号任一成立即可：
-    1) pandas 已经把它读成数字类型（如 float64）；
-    2) 强制转换后"能转出来的值"比转换前多 —— 说明那串字符里藏着数字。
+    判定是启发式的（也是为什么本脚本支持 --by / --numeric 覆盖）：
+    - pandas 已经把它读成数字类型 -> 是；
+    - 否则，能被转成数字的值占比 >= 60% -> 是（拦住"一个未知毁一列"）。
     """
     if pd.api.types.is_numeric_dtype(df[col]):
         return True
-    coerced = to_numeric_series(df, col)
-    return int(coerced.notna().sum()) > int(df[col].notna().sum())
+    return numeric_fraction(df, col) >= 0.6
 
 
 def pick_group_col(df: pd.DataFrame) -> str | None:
