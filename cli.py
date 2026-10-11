@@ -65,9 +65,14 @@ def report(df: pd.DataFrame) -> None:
     print("[numeric] 数值列统计:")
     for col in numeric_cols(df):
         s = pd.to_numeric(df[col], errors="coerce")
+        # NaN 参与比较时总是 False，所以 == 和 < 不会被 NaN 污染；
+        # 但 (s != 0).sum() 会把 NaN 算进去（NaN != 0 是 True），别用那个写法。
+        zeros = int((s == 0).sum())
+        negatives = int((s < 0).sum())
         print(
             f"  {col:<10} 有效 {int(s.notna().sum())}/{len(s)}"
             f"  mean={s.mean():.4f}  median={s.median():.4f}"
+            f"  zeros={zeros}  negatives={negatives}"
         )
 
 
