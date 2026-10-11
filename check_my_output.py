@@ -34,10 +34,10 @@ def expected(csv: Path) -> dict:
     }
 
 
-def run_script(script: Path, cwd: Path) -> str:
+def run_script(script: Path, cwd: Path, extra_args: list[str]) -> str:
     """在子进程里跑学生的脚本，捕获 stdout（和终端里 python 跑出来的一致）。"""
     proc = subprocess.run(
-        [sys.executable, str(script)],
+        [sys.executable, str(script), *extra_args],
         cwd=str(cwd),
         capture_output=True,
         text=True,
@@ -86,10 +86,11 @@ def main() -> int:
     parser.add_argument("target", type=Path, help="explore.py 的输出文件，或用 --run 时传脚本路径")
     parser.add_argument("csv", type=Path, help="对应的输入 CSV")
     parser.add_argument("--run", action="store_true", help="把 target 当成脚本直接运行并评分")
+    parser.add_argument("script_args", nargs="*", help="用 --run 时，额外传给脚本的参数（例如 CSV 路径）")
     args = parser.parse_args()
 
     if args.run:
-        text = run_script(args.target, args.csv.resolve().parent.parent)
+        text = run_script(args.target, args.csv.resolve().parent.parent, args.script_args)
     else:
         text = args.target.read_text(encoding="utf-8", errors="replace")
 
